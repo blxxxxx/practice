@@ -1,10 +1,48 @@
 {
-    "name": "John",
-    "age": 30,
-    "is_student": false,
+  "user": {
+    "name": "Alice",
+    "age": 25,
+    "is_student": true,
     "address": {
-        "city": "New York",
-        "zipcode": "10001"
+      "city": "Los Angeles",
+      "country": "USA"
     },
-    "hobbies": ["reading", "sports", "cooking"]
+    "friends": [
+      {
+        "name": "Bob",
+        "age": 28,
+        "is_student": false,
+        "address": {
+          "city": "San Francisco",
+          "country": "USA"
+        }
+      },
+      {
+        "name": "Charlie",
+        "age": 22,
+        "is_student": true,
+        "address": {
+          "city": "Seattle",
+          "country": "USA"
+        }
+      }
+    ]
+  },
+  "company": {
+    "name": "XYZ Corp",
+    "employees": [
+      {
+        "name": "David",
+        "position": "Software Engineer",
+        "age": 30,
+        "projects": ["Project A", "Project B"]
+      },
+      {
+        "name": "Eve",
+        "position": "Data Scientist",
+        "age": 35,
+        "projects": ["Project C"]
+      }
+    ]
+  }
 }
