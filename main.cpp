@@ -14,10 +14,46 @@ namespace json {
     using Readstr = std::string_view;
     struct Node {
         Value val;
+        Node() {
+            val = Null();
+        }
         Node(Value x) {
-            val = x;
+            this->val = x;
         }
     };
+
+    std::ostream& operator<<(std::ostream &cout,const Value &x){
+        if(std::holds_alternative<Object>(x)) {
+            cout << "{";
+            int flag = 0;
+            for(auto [p,q] : std::get<Object>(x)) {
+                if(flag)cout << ',';
+                cout << '\"' << p << '\"' << ':' << q.val;
+                flag = 1;
+            }
+            cout << "}";
+        }else if(std::holds_alternative<Array>(x)) {
+            cout << "[";
+            int flag = 0;
+            for(auto & p : std::get<Array>(x)) {
+                if(flag)cout << ',';
+                cout << p.val;
+                flag = 1;
+            }
+            cout << "]";
+        }else if(std::holds_alternative<String>(x)) {
+            cout << "\"" << std::get<String>(x) << "\"";
+        }else if(std::holds_alternative<Bool>(x)) {
+            bool flag = std::get<Bool>(x);
+            if(flag)cout << "true";
+            else cout << "false";
+        }else if(std::holds_alternative<Int>(x)) {
+            cout << std::get<Int>(x);
+        }else if(std::holds_alternative<Float>(x)) {
+            cout << std::get<Float>(x);
+        }
+        return cout;
+    }
     class json_parser {
         Readstr json_str;
         std::size_t pos,len;
@@ -29,44 +65,106 @@ namespace json {
         std::optional<Node> parser_arr() {
             Array res;
             pos++;
-            skip_whitespace();
-            while(json_str[pos] != ']') {
+            while(pos < len && json_str[pos] != ']') {
+                skip_whitespace();
                 res.push_back(judge_kind().value());
                 skip_whitespace();
+                if(json_str[pos] == ',')pos++;
             }
             pos++;
             return Node(Value(res));
         }
         std::optional<Node> parser_obj() {
-
+            Object res;
+            pos++;
+            while(pos < len && json_str[pos] != '}') {
+                skip_whitespace();
+                String key = std::get<std::string>(parser_str().value().val);
+                skip_whitespace();
+                assert(json_str[pos] == ':');
+                pos++;
+                skip_whitespace();
+                Node val__ = judge_kind().value();
+                res[key] = val__;
+                skip_whitespace();
+                if(json_str[pos] == ',')pos++;
+            }
+            pos++;
+            return Node(Value(res));
         }
         std::optional<Node> parser_str() {
-
+            String res;
+            pos++;
+            while(pos < len && json_str[pos] != '\"') {
+                res += json_str[pos];
+                pos++;
+            }
+            pos++;
+            return Node(Value(res));
         }
         std::optional<Node> parser_num() {
-
+            Int res = 0;
+            bool flag = false;
+            long long div = 1;
+            while(pos < len && (isdigit(json_str[pos]) || json_str[pos] == '.')) {
+                if(json_str[pos] == '.') {
+                    flag = true;
+                }else{
+                    res = res * 10 + (json_str[pos] - '0');
+                    if(flag)div *= 10;
+                }
+                pos++;
+            }
+            res = res / div;
+            return Node(Value(res));
         }
         std::optional<Node> parser_null() {
-
+            assert(pos < len && json_str[pos] == 'n');
+            pos++;
+            assert(pos < len && json_str[pos] == 'u');
+            pos++;
+            assert(pos < len && json_str[pos] == 'l');
+            pos++;
+            assert(pos < len && json_str[pos] == 'l');
+            pos++;
+            Null res;
+            return Node(Value(res));
         }
         std::optional<Node> parser_bool() {
-
+            std::string bool_s;
+            if(json_str[pos] == 't') {
+                for(int i = 0; i < 4; ++i) {
+                    assert(pos < len);
+                    bool_s += json_str[pos];
+                    pos++;
+                }
+            }else if(json_str[pos] == 'f'){
+                for(int i = 0; i < 5; ++i) {
+                    assert(pos < len);
+                    bool_s += json_str[pos];
+                    pos++;
+                }
+            }
+            assert(bool_s == "true" || bool_s == "false");
+            if(bool_s == "true")return Node(Value(true));
+            else return Node(Value(false));
         }
         std::optional<Node> judge_kind() {
+            // static int cnt = 0;
+            // std::cout << "judge_kind" << ++cnt << '\n';
             skip_whitespace();
-            if constexpr (json_str[pos] == '[')
+            if (json_str[pos] == '[')
                 return parser_arr();
-            else if constexpr (json_str[pos] == '{')
+            if(json_str[pos] == '{')
                 return parser_obj();
-            else if constexpr (json_str[pos] == '\"')
+            if(json_str[pos] == '\"')
                 return parser_str();
-            else if constexpr (isdigit(json_str[pos]))
+            if (isdigit(json_str[pos]))
                 return parser_num();
-            else if constexpr (json_str[pos] == 'n')
+            if (json_str[pos] == 'n')
                 return parser_null();
-            else if constexpr (json_str[pos] == 't' || json_str[pos] == 'f')
+            if (json_str[pos] == 't' || json_str[pos] == 'f')
                 return parser_bool();
-            else throw std::runtime_error("start of illegal char");
             return {};
         }
     public:
@@ -75,7 +173,12 @@ namespace json {
             pos = 0;
             len = str.size();
         }
-
+        std::optional<Node> solve() {
+            auto res = judge_kind().value().val;
+            if(std::holds_alternative<Object>(res) || std::holds_alternative<Array>(res))
+                return res;
+            return {};
+        }
         void show() {
             for(int i = 0; i < len; ++i) {
                 std::cout << (int)json_str[i] << '\n';
@@ -83,12 +186,13 @@ namespace json {
         }
     };
 }
-
+using namespace json;
 
 signed main() {
     std::ifstream fin("../json.txt");
     std::stringstream ss; ss << fin.rdbuf();
     std::string s{ ss.str() };
-    json::json_parser p(s);
-    p.show();
+    json_parser p(s);
+    std::cout << p.solve().value().val;
+    return 0;
 }
