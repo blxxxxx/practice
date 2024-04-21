@@ -1,2 +1,2 @@
 # c++-practice
-jsonparser
+json-parser
