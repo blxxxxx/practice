@@ -51,6 +51,8 @@ namespace json {
             cout << std::get<Int>(x);
         }else if(std::holds_alternative<Float>(x)) {
             cout << std::get<Float>(x);
+        }else if(std::holds_alternative<Null>(x)) {
+            cout << "null";
         }
         return cout;
     }
@@ -187,12 +189,35 @@ namespace json {
     };
 }
 using namespace json;
-
+bool update(Value& x,std::string& key,Node& new_val) {
+    int flag = false;
+    if(std::holds_alternative<Object>(x)) {
+        for(auto &[p,q] : std::get<Object>(x)) {
+            if(p == key) {
+                q = new_val;
+                flag = true;
+            }
+            if(update(q.val,key,new_val))
+                flag = true;
+        }
+    }else if(std::holds_alternative<Array>(x)) {
+        for(auto & p : std::get<Array>(x)) {
+            if(update(p.val,key,new_val))
+                flag = true;
+        }
+    }
+    return flag;
+}
 signed main() {
     std::ifstream fin("../json.txt");
     std::stringstream ss; ss << fin.rdbuf();
     std::string s{ ss.str() };
     json_parser p(s);
-    std::cout << p.solve().value().val;
+    auto res = p.solve().value();
+    std::cout << res.val;
+    std::string key = "friends";
+    Node new_val = Node(Null());
+    std::cout << '\n' << update(res.val,key,new_val) << '\n';
+    std::cout << res.val;
     return 0;
 }
