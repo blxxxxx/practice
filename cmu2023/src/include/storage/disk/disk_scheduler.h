@@ -15,6 +15,7 @@
 #include <future>  // NOLINT
 #include <optional>
 #include <thread>  // NOLINT
+#include <unordered_map>
 
 #include "common/channel.h"
 #include "storage/disk/disk_manager.h"
@@ -51,6 +52,7 @@ struct DiskRequest {
  */
 class DiskScheduler {
  public:
+  friend class BufferPoolManager;
   explicit DiskScheduler(DiskManager *disk_manager);
   ~DiskScheduler();
 
@@ -91,5 +93,6 @@ class DiskScheduler {
   Channel<std::optional<DiskRequest>> request_queue_;
   /** The background thread responsible for issuing scheduled requests to the disk manager. */
   std::optional<std::thread> background_thread_;
+  std::unordered_map<page_id_t, std::string> mp_;
 };
 }  // namespace bustub
