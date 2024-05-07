@@ -93,6 +93,6 @@ class DiskScheduler {
   Channel<std::optional<DiskRequest>> request_queue_;
   /** The background thread responsible for issuing scheduled requests to the disk manager. */
   std::optional<std::thread> background_thread_;
-  std::unordered_map<page_id_t, std::string> mp_;
+  //  std::unordered_map<page_id_t, std::string> mp_;
 };
 }  // namespace bustub

@@ -43,25 +43,27 @@ void DiskScheduler::StartWorkerThread() {
     }
     DiskRequest req = std::move(res.value());
     if (req.is_write_) {
-      std::string str;
-      char *p = req.data_;
-      while (*p != 0) {
-        str += *p;
-        p++;
-      }
-      this->mp_[req.page_id_] = str;
+      this->disk_manager_->WritePage(req.page_id_, req.data_);
+      //      std::string str;
+      //      char *p = req.data_;
+      //      while (*p != 0) {
+      //        str += *p;
+      //        p++;
+      //      }
+      //      this->mp_[req.page_id_] = str;
     } else {
-      char *p = req.data_;
-      if (this->mp_.count(req.page_id_) == 0) {
-        *p = '\0';
-      } else {
-        std::string str = this->mp_[req.page_id_];
-        for (auto &c : str) {
-          *p = c;
-          p++;
-        }
-        *p = '\0';
-      }
+      this->disk_manager_->ReadPage(req.page_id_, req.data_);
+      //      char *p = req.data_;
+      //      if (this->mp_.count(req.page_id_) == 0) {
+      //        *p = '\0';
+      //      } else {
+      //        std::string str = this->mp_[req.page_id_];
+      //        for (auto &c : str) {
+      //          *p = c;
+      //          p++;
+      //        }
+      //        *p = '\0';
+      //      }
     }
     req.callback_.set_value(true);
   }

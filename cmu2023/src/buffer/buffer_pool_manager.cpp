@@ -52,7 +52,12 @@ auto BufferPoolManager::NewPage(page_id_t *page_id) -> Page * {
     this->replacer_->Evict(&alloc_f);
     if (pages_[alloc_f].is_dirty_) {
       // write back
-      this->disk_scheduler_->disk_manager_->WritePage(this->pages_[alloc_f].page_id_, this->pages_[alloc_f].data_);
+      auto promise = this->disk_scheduler_->CreatePromise();
+      std::future<bool> future = promise.get_future();
+      DiskRequest r = {true, this->pages_[alloc_f].data_, this->pages_[alloc_f].page_id_, std::move(promise)};
+      this->disk_scheduler_->Schedule(std::move(r));
+      future.get();
+      // this->disk_scheduler_->disk_manager_->WritePage(this->pages_[alloc_f].page_id_, this->pages_[alloc_f].data_);
     }
     this->page_table_.erase(this->pages_[alloc_f].page_id_);
   }
@@ -91,7 +96,12 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType
     this->replacer_->Evict(&fid);
     if (this->pages_[fid].is_dirty_) {
       // write back
-      this->disk_scheduler_->disk_manager_->WritePage(this->pages_[fid].page_id_, this->pages_[fid].data_);
+      auto promise = this->disk_scheduler_->CreatePromise();
+      std::future<bool> future = promise.get_future();
+      DiskRequest r = {true, this->pages_[fid].data_, this->pages_[fid].page_id_, std::move(promise)};
+      this->disk_scheduler_->Schedule(std::move(r));
+      future.get();
+      // this->disk_scheduler_->disk_manager_->WritePage(this->pages_[fid].page_id_, this->pages_[fid].data_);
     }
     this->page_table_.erase(this->pages_[fid].page_id_);
   }
@@ -100,7 +110,12 @@ auto BufferPoolManager::FetchPage(page_id_t page_id, [[maybe_unused]] AccessType
   this->pages_[fid].page_id_ = page_id;
   this->pages_[fid].is_dirty_ = false;
   this->replacer_->RecordAccess(fid);
-  this->disk_scheduler_->disk_manager_->ReadPage(page_id, this->pages_[fid].data_);
+  auto promise = this->disk_scheduler_->CreatePromise();
+  std::future<bool> future = promise.get_future();
+  DiskRequest r = {false, this->pages_[fid].data_, page_id, std::move(promise)};
+  this->disk_scheduler_->Schedule(std::move(r));
+  future.get();
+  //  this->disk_scheduler_->disk_manager_->ReadPage(page_id, this->pages_[fid].data_);
   return pages_ + fid;
 }
 
@@ -126,7 +141,12 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
     return false;
   }
   frame_id_t fid = this->page_table_[page_id];
-  this->disk_scheduler_->disk_manager_->WritePage(page_id, this->pages_[fid].data_);
+  auto promise = this->disk_scheduler_->CreatePromise();
+  std::future<bool> future = promise.get_future();
+  DiskRequest r = {true, this->pages_[fid].data_, page_id, std::move(promise)};
+  this->disk_scheduler_->Schedule(std::move(r));
+  future.get();
+  //  this->disk_scheduler_->disk_manager_->WritePage(page_id, this->pages_[fid].data_);
   this->pages_[fid].is_dirty_ = false;
   return true;
 }
@@ -134,7 +154,12 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
 void BufferPoolManager::FlushAllPages() {
   std::unique_lock all_lk{this->simple_safe_};
   for (size_t i = 0; i < pool_size_; ++i) {
-    this->disk_scheduler_->disk_manager_->WritePage(this->pages_[i].page_id_, this->pages_[i].data_);
+    auto promise = this->disk_scheduler_->CreatePromise();
+    std::future<bool> future = promise.get_future();
+    DiskRequest r = {true, this->pages_[i].data_, this->pages_[i].page_id_, std::move(promise)};
+    this->disk_scheduler_->Schedule(std::move(r));
+    future.get();
+    //    this->disk_scheduler_->disk_manager_->WritePage(this->pages_[i].page_id_, this->pages_[i].data_);
     this->pages_[i].is_dirty_ = false;
   }
 }
@@ -161,12 +186,26 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
 
 auto BufferPoolManager::AllocatePage() -> page_id_t { return next_page_id_++; }
 
-auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard { return {this, nullptr}; }
+auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard {
+  Page *res = this->FetchPage(page_id);
+  return {this, res};
+}
 
-auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard { return {this, nullptr}; }
+auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard {
+  Page *res = this->FetchPage(page_id);
+  res->RLatch();
+  return ReadPageGuard{this, res};
+}
 
-auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard { return {this, nullptr}; }
+auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard {
+  Page *res = this->FetchPage(page_id);
+  res->WLatch();
+  return WritePageGuard{this, res};
+}
 
-auto BufferPoolManager::NewPageGuarded(page_id_t *page_id) -> BasicPageGuard { return {this, nullptr}; }
+auto BufferPoolManager::NewPageGuarded(page_id_t *page_id) -> BasicPageGuard {
+  Page *res = this->NewPage(page_id);
+  return {this, res};
+}
 
 }  // namespace bustub
