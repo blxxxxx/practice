@@ -41,14 +41,14 @@ TEST(ExtendibleHTableTest, MyTest) {
   }
   ht.PrintHT();
   for (int i = 0; i < num_keys; i++) {
-    if(i == 6){
+    if (i == 6) {
       std::cout << "!!\n";
     }
     ht.Remove(i);
     ht.PrintHT();
   }
   ht.VerifyIntegrity();
-//  ht.PrintHT();
+  //  ht.PrintHT();
 }
 // NOLINTNEXTLINE
 TEST(ExtendibleHTableTest, InsertTest1) {

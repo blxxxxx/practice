@@ -63,5 +63,53 @@ class TopNExecutor : public AbstractExecutor {
   const TopNPlanNode *plan_;
   /** The child executor from which tuples are obtained */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  std::vector<std::pair<Tuple, RID>> heap_{};
+
+  uint32_t cnt_{0};
+  [[nodiscard]] auto Cmp(const std::pair<Tuple, RID> &x, const std::pair<Tuple, RID> &y) const -> bool {
+    for (auto &[type, expr] : this->plan_->GetOrderBy()) {
+      Value x_res = expr->Evaluate(&x.first, this->GetOutputSchema());
+      Value y_res = expr->Evaluate(&y.first, this->GetOutputSchema());
+      assert(type != OrderByType::INVALID);
+      if (type == OrderByType::DESC) {
+        if (x_res.CompareLessThan(y_res) == CmpBool::CmpTrue) {
+          return false;
+        }
+        if (x_res.CompareGreaterThan(y_res) == CmpBool::CmpTrue) {
+          return true;
+        }
+      }
+      if (type == OrderByType::ASC || type == OrderByType::DEFAULT) {
+        if (x_res.CompareLessThan(y_res) == CmpBool::CmpTrue) {
+          return true;
+        }
+        if (x_res.CompareGreaterThan(y_res) == CmpBool::CmpTrue) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+  static void Swap(std::pair<Tuple, RID> &x, std::pair<Tuple, RID> &y) {
+    auto t = y;
+    y = x;
+    x = t;
+  }
+  void HeapPushDown(uint32_t top, uint32_t end) {
+    uint32_t child = top * 2 + 1;
+    while (child < end) {
+      if (child + 1 < end && Cmp(heap_[child + 1], heap_[child])) {
+        child++;
+      }
+      if (Cmp(heap_[child], heap_[top])) {
+        Swap(heap_[child], heap_[top]);
+        top = child;
+        child = top * 2 + 1;
+      } else {
+        return;
+      }
+    }
+  }
 };
 }  // namespace bustub

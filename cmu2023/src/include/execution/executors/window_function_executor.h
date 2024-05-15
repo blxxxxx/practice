@@ -17,6 +17,8 @@
 
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
+#include "execution/executors/aggregation_executor.h"
+#include "execution/plans/aggregation_plan.h"
 #include "execution/plans/window_plan.h"
 #include "storage/table/tuple.h"
 
@@ -90,5 +92,63 @@ class WindowFunctionExecutor : public AbstractExecutor {
 
   /** The child executor from which tuples are obtained */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  std::vector<std::pair<Tuple, RID>> child_result_{};
+  std::vector<Tuple> result_{};
+  uint32_t cur_idx_{0};
+  /** @return The tuple as an AggregateKey */
+  auto MakeAggregateKey(const Tuple *tuple, const std::vector<AbstractExpressionRef> &vec) -> AggregateKey {
+    std::vector<Value> keys;
+    keys.reserve(vec.size());
+    for (const auto &expr : vec) {
+      keys.emplace_back(expr->Evaluate(tuple, child_executor_->GetOutputSchema()));
+    }
+    AggregateKey res{keys};
+    return res;
+  }
+
+  /** @return The tuple as an AggregateValue */
+  auto MakeAggregateValue(const Tuple *tuple, const AbstractExpressionRef &expr) -> AggregateValue {
+    std::vector<Value> vals;
+    vals.emplace_back(expr->Evaluate(tuple, child_executor_->GetOutputSchema()));
+    AggregateValue res{vals};
+    return res;
+  }
+  auto SolveOrdered() -> bool {
+    auto &x = this->plan_->window_functions_;
+    if (x.size() == static_cast<uint32_t>(0)) {
+      return false;
+    }
+    auto &ordered_by = x.begin()->second.order_by_;
+    if (ordered_by.empty()) {
+      return false;
+    }
+    std::sort(this->child_result_.begin(), this->child_result_.end(),
+              [&](const std::pair<Tuple, RID> &x, const std::pair<Tuple, RID> &y) -> bool {
+                for (auto &[type, expr] : ordered_by) {
+                  Value x_res = expr->Evaluate(&x.first, this->GetOutputSchema());
+                  Value y_res = expr->Evaluate(&y.first, this->GetOutputSchema());
+                  assert(type != OrderByType::INVALID);
+                  if (type == OrderByType::DESC) {
+                    if (x_res.CompareLessThan(y_res) == CmpBool::CmpTrue) {
+                      return false;
+                    }
+                    if (x_res.CompareGreaterThan(y_res) == CmpBool::CmpTrue) {
+                      return true;
+                    }
+                  }
+                  if (type == OrderByType::ASC || type == OrderByType::DEFAULT) {
+                    if (x_res.CompareLessThan(y_res) == CmpBool::CmpTrue) {
+                      return true;
+                    }
+                    if (x_res.CompareGreaterThan(y_res) == CmpBool::CmpTrue) {
+                      return false;
+                    }
+                  }
+                }
+                return true;
+              });
+    return true;
+  }
 };
 }  // namespace bustub
