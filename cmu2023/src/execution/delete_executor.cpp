@@ -12,6 +12,9 @@
 
 #include <memory>
 
+#include "common/exception.h"
+#include "concurrency/transaction_manager.h"
+#include "execution/execution_common.h"
 #include "execution/executors/delete_executor.h"
 
 namespace bustub {
@@ -31,12 +34,36 @@ auto DeleteExecutor::Next([[maybe_unused]] Tuple *tuple, RID *rid) -> bool {
   }
   TableInfo *tar_info = this->exec_ctx_->GetCatalog()->GetTable(this->plan_->table_oid_);
   auto tar_indexes = this->exec_ctx_->GetCatalog()->GetTableIndexes(tar_info->name_);
-  this->child_executor_->Init();
+  timestamp_t txn_id = this->exec_ctx_->GetTransaction()->GetTransactionId();
+  timestamp_t rd_ts = this->exec_ctx_->GetTransaction()->GetReadTs();
+  auto rids = GetChileRids(this->child_executor_.get());
+  for (auto &ch_rid : rids) {
+    TupleMeta meta = tar_info->table_->GetTupleMeta(ch_rid);
+    if (CheckWriteConflict(txn_id, rd_ts, meta) == 0) {
+      this->exec_ctx_->GetTransaction()->SetTainted();
+      throw ExecutionException("write_write_conflict");
+    }
+  }
   RID child_rid;
   Tuple val;
   int cnt = 0;
+  this->child_executor_->Init();
   while (this->child_executor_->Next(&val, &child_rid)) {
-    this->exec_ctx_->GetCatalog()->GetTable(this->plan_->table_oid_)->table_->UpdateTupleMeta({0, true}, child_rid);
+    auto meta = tar_info->table_->GetTupleMeta(child_rid);
+    uint32_t delete_type = CheckWriteConflict(txn_id, rd_ts, meta);
+    tar_info->table_->UpdateTupleMeta({txn_id, true}, child_rid);
+    if (delete_type == 1) {
+      std::vector<bool> bits(this->child_executor_->GetOutputSchema().GetColumnCount(), true);
+      UndoLog log{meta.is_deleted_, bits, val, meta.ts_};
+      AddUndoLog(log, this->exec_ctx_->GetTransaction(), this->exec_ctx_->GetTransactionManager(), child_rid);
+    }
+    if (delete_type == 2) {
+      std::vector<bool> bits(this->child_executor_->GetOutputSchema().GetColumnCount(), true);
+      UndoLog log{meta.is_deleted_, bits, val, meta.ts_};
+      UpdateUndoLog(log, this->exec_ctx_->GetTransaction(), this->exec_ctx_->GetTransactionManager(), child_rid,
+                    &this->child_executor_->GetOutputSchema());
+    }
+    this->exec_ctx_->GetTransaction()->AppendWriteSet(this->plan_->table_oid_, child_rid);
     for (auto &index : tar_indexes) {
       std::vector<Value> vec;
       vec.reserve(index->key_schema_.GetColumnCount());

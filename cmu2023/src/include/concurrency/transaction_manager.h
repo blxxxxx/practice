@@ -104,6 +104,7 @@ class TransactionManager {
    * still throw an exception if the index is out of range. */
   auto GetUndoLogOptional(UndoLink link) -> std::optional<UndoLog>;
 
+  auto GetTransaction(txn_id_t idx) -> Transaction *;
   /** @brief Access the transaction undo log buffer and get the undo log. Except when accessing the current txn buffer,
    * you should always call this function to get the undo log instead of manually retrieve the txn shared_ptr and access
    * the buffer. */
@@ -116,11 +117,15 @@ class TransactionManager {
    * heap. */
   void GarbageCollection();
 
+  auto ReadTimeTuple(const RID &rid, const timestamp_t &rd_t, const timestamp_t &txn_id, const Schema *schema,
+                     const Tuple &base_tuple, const TupleMeta &base_meta) -> std::optional<Tuple>;
   /** protects txn map */
   std::shared_mutex txn_map_mutex_;
   /** All transactions, running or committed */
   std::unordered_map<txn_id_t, std::shared_ptr<Transaction>> txn_map_;
 
+  std::mutex delete_cnt_mutex_;
+  std::unordered_map<txn_id_t, uint32_t> delete_cnt_;
   struct PageVersionInfo {
     /** protects the map */
     std::shared_mutex mutex_;

@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "execution/executors/seq_scan_executor.h"
-
+#include "concurrency/transaction_manager.h"
 namespace bustub {
 
 SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNode *plan)
@@ -26,20 +26,31 @@ void SeqScanExecutor::Init() {
 auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   Value value_true(TypeId::BOOLEAN, 1);
   while (!this->it_->IsEnd()) {
-    auto val = it_->GetTuple();
+    TupleMeta tuple_meta = it_->GetTuple().first;
+    timestamp_t rd_s = this->exec_ctx_->GetTransaction()->GetReadTs();
+    timestamp_t txn_id = this->exec_ctx_->GetTransaction()->GetTransactionId();
+    auto opt = this->exec_ctx_->GetTransactionManager()->ReadTimeTuple(
+        it_->GetRID(), rd_s, txn_id, &this->GetOutputSchema(), it_->GetTuple().second, tuple_meta);
+    if (!opt.has_value()) {
+      ++(*it_);
+      continue;
+    }
+    auto val = opt.value();
+    /*
     if (val.first.is_deleted_) {
       ++(*it_);
       continue;
     }
+    */
     auto filter = this->plan_->filter_predicate_;
     if (filter != nullptr) {
-      auto t = filter->Evaluate(&val.second, this->plan_->OutputSchema());
+      auto t = filter->Evaluate(&val, this->plan_->OutputSchema());
       if (t.CompareEquals(value_true) == CmpBool::CmpFalse) {
         ++(*it_);
         continue;
       }
     }
-    *tuple = val.second;
+    *tuple = val;
     *rid = it_->GetRID();
     ++(*it_);
     return true;
